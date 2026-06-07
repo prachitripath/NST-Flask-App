@@ -75,22 +75,26 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def style_transfer(content_image, style_image, alpha):
-    load_models_lazy() # Ensure models are downloaded and loaded right before execution
+    load_models_lazy() # Ensure models are loaded
+
+    # Downsizing to 128px drastically cuts the math, stopping Render from timing out!
+    TARGET_SIZE = 128 
 
     content_transform = transforms.Compose([
-        transforms.Resize(200), # Dropped slightly from 256 to 200 for absolute safety
+        transforms.Resize((TARGET_SIZE, TARGET_SIZE)),
         transforms.ToTensor()
     ])
 
     style_transform = transforms.Compose([
-        transforms.Resize(200), # Dropped slightly to 200 for absolute safety
+        transforms.Resize((TARGET_SIZE, TARGET_SIZE)),
         transforms.ToTensor()
     ])
     
     content_image = content_transform(content_image).unsqueeze(0).to(device)
     style_image = style_transform(style_image).unsqueeze(0).to(device)
 
-    with torch.no_grad():
+    # torch.inference_mode() makes the CPU process the layers much faster
+    with torch.inference_mode(): 
         content_feats = encoder(content_image, is_test=True)
         style_feats = encoder(style_image, is_test=True)
 
@@ -99,7 +103,7 @@ def style_transfer(content_image, style_image, alpha):
 
         stylized_image = decoder(stylized_feats)
         
-        # Free up variables and aggressively flush Python's Garbage Collection
+        # Instantly wipe variables from memory
         del content_feats, style_feats, stylized_feats
         gc.collect() 
 
