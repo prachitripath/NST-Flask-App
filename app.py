@@ -55,23 +55,19 @@ def load_models_lazy():
     if encoder is not None and decoder is not None:
         return # Models are already loaded in memory
 
-    print("Initializing models for the first time...", flush=True)
-    
+    print("Initializing models cleanly from disk...", flush=True)
     gc.collect() 
 
     encoder_path = 'vgg_normalized.pth'
     decoder_path = 'decoder_2.pth'
 
-    download_file_from_google_drive('1CKxQm0W8GmB2NIg8whmgxrTgaCP5-sVP', encoder_path)
-    download_file_from_google_drive('1GAWG6_ytKp07wY8QMIac9_JK-7m_mkLU', decoder_path)
-
+    # Models are guaranteed to be on disk now because of the new build command!
     encoder = VGGEncoder(encoder_path).to(device)
     decoder = Decoder().to(device)
     decoder.load_state_dict(torch.load(decoder_path, map_location=device))
 
     encoder.eval()
     decoder.eval()
-    
     gc.collect()
 
 def allowed_file(filename):
