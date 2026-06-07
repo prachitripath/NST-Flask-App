@@ -175,5 +175,5 @@ def send_example(filename):
     return send_from_directory('examples', filename)
 
 if __name__ == '__main__':
-    from werkzeug.serving import run_simple
-    run_simple('localhost', 5000, app, use_reloader=True, use_debugger=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
