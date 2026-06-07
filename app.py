@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from wtforms import FileField, SubmitField, FloatField, HiddenField
 from PIL import Image
 from torchvision import transforms
+import gc
 
 # Import your existing AdaIN code
 from utils.models import VGGEncoder, Decoder
@@ -29,10 +30,10 @@ class UploadForm(FlaskForm):
     alpha = FloatField('Alpha', default=1.0)
     submit = SubmitField('Transfer Style')
 
-# Global model placeholders (Lazy Loading)
+
 encoder = None
 decoder = None
-device = torch.device("cpu") # Force strictly CPU to respect Render's Free tier limits
+device = torch.device("cpu") 
 
 # Google Drive Direct Download Helper
 def download_file_from_google_drive(file_id, destination):
@@ -55,23 +56,23 @@ def load_models_lazy():
         return # Models are already loaded in memory
 
     print("Initializing models for the first time...", flush=True)
-    torch.set_grad_enabled(False)
+    
+    gc.collect() 
 
-    # File paths on Render instance
     encoder_path = 'vgg_normalized.pth'
     decoder_path = 'decoder_2.pth'
 
-    # Download from your Google Drive links if they don't exist yet
     download_file_from_google_drive('1CKxQm0W8GmB2NIg8whmgxrTgaCP5-sVP', encoder_path)
     download_file_from_google_drive('1GAWG6_ytKp07wY8QMIac9_JK-7m_mkLU', decoder_path)
 
-    # Initialize and load model architectures
     encoder = VGGEncoder(encoder_path).to(device)
     decoder = Decoder().to(device)
     decoder.load_state_dict(torch.load(decoder_path, map_location=device))
 
     encoder.eval()
     decoder.eval()
+    
+    gc.collect()
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -81,12 +82,12 @@ def style_transfer(content_image, style_image, alpha):
     load_models_lazy() # Ensure models are downloaded and loaded right before execution
 
     content_transform = transforms.Compose([
-        transforms.Resize(256), # Scaled down to prevent out-of-memory spikes during processing
+        transforms.Resize(200), # Dropped slightly from 256 to 200 for absolute safety
         transforms.ToTensor()
     ])
 
     style_transform = transforms.Compose([
-        transforms.Resize(256),
+        transforms.Resize(200), # Dropped slightly to 200 for absolute safety
         transforms.ToTensor()
     ])
     
@@ -102,8 +103,9 @@ def style_transfer(content_image, style_image, alpha):
 
         stylized_image = decoder(stylized_feats)
         
-        # Free up variables immediately from RAM
+        # Free up variables and aggressively flush Python's Garbage Collection
         del content_feats, style_feats, stylized_feats
+        gc.collect() 
 
     return stylized_image
 
