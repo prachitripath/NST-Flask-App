@@ -31,11 +31,13 @@ class UploadForm(FlaskForm):
     alpha = FloatField('Alpha', default=1.0)
     submit = SubmitField('Transfer Style')
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
+torch.set_grad_enabled(False) 
 
 encoder = VGGEncoder('vgg_normalized.pth').to(device)
 decoder = Decoder().to(device)
-decoder.load_state_dict(torch.load('experiment/trial2/decoder_2.pth', map_location=torch.device('cpu')))
+
+decoder.load_state_dict(torch.load('experiment/trial2/decoder_2.pth', map_location=device))
 
 encoder.eval()
 decoder.eval()
@@ -46,12 +48,12 @@ def allowed_file(filename):
 
 def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
     content_transform = transforms.Compose([
-        transforms.Resize(512),
+        transforms.Resize(256),
         transforms.ToTensor()
     ])
 
     style_transform = transforms.Compose([
-        transforms.Resize(512),
+        transforms.Resize(256),
         transforms.ToTensor()
     ])
     content_image = content_transform(content_image).unsqueeze(0).to(device)
@@ -62,11 +64,12 @@ def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
         style_feats = encoder(style_image, is_test=True)
 
         stylized_feats = adaptive_instance_normalization(content_feats, style_feats)
-
         stylized_feats = alpha * stylized_feats + (1 - alpha) * content_feats
 
         stylized_image = decoder(stylized_feats)
-
+        
+        del content_feats, style_feats, stylized_feats
+        
     return stylized_image
 
 
