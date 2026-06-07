@@ -19,6 +19,10 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'supersecretkey'
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
+
+app.config['WTF_CSRF_ENABLED'] = False  
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
 Bootstrap(app)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -123,6 +127,7 @@ def index():
             except Exception as e:
                 error = str(e)
     else:
+        print("Form Errors:", form.errors)
         if not content_filename:
             error = 'Please upload content image'
         if not style_filename:
@@ -142,6 +147,12 @@ def send_example(filename):
     return send_from_directory('examples', filename)
 
 
+# if __name__ == '__main__':
+#     from werkzeug.serving import run_simple
+#     run_simple('localhost', 5000, app, use_reloader=True, use_debugger=True)
+
+
 if __name__ == '__main__':
-    from werkzeug.serving import run_simple
-    run_simple('localhost', 5000, app, use_reloader=True, use_debugger=True)
+    # Hugging Face exposes the app on port 7860 by default
+    port = int(os.environ.get("PORT", 7860))
+    app.run(host='0.0.0.0', port=port)
