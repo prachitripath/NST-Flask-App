@@ -9,6 +9,7 @@ from wtforms import FileField, SubmitField, FloatField, HiddenField
 from PIL import Image
 from torchvision import transforms
 import gc
+import urllib.request
 
 # Import your existing AdaIN code
 from utils.models import VGGEncoder, Decoder
@@ -53,15 +54,23 @@ def download_file_from_google_drive(file_id, destination):
 def load_models_lazy():
     global encoder, decoder
     if encoder is not None and decoder is not None:
-        return # Models are already loaded in memory
+        return 
 
-    print("Initializing models cleanly from disk...", flush=True)
+    print("Initializing models cleanly...", flush=True)
     gc.collect() 
 
     encoder_path = 'vgg_normalized.pth'
     decoder_path = 'decoder_2.pth'
 
-    # Models are guaranteed to be on disk now because of the new build command!
+    
+    if not os.path.exists(encoder_path):
+        print("Downloading encoder model file...", flush=True)
+        urllib.request.urlretrieve('https://docs.google.com/uc?export=download&id=1CKxQm0W8GmB2NIg8whmgxrTgaCP5-sVP', encoder_path)
+        
+    if not os.path.exists(decoder_path):
+        print("Downloading decoder model file...", flush=True)
+        urllib.request.urlretrieve('https://docs.google.com/uc?export=download&id=1GAWG6_ytKp07wY8QMIac9_JK-7m_mkLU', decoder_path)
+
     encoder = VGGEncoder(encoder_path).to(device)
     decoder = Decoder().to(device)
     decoder.load_state_dict(torch.load(decoder_path, map_location=device))
@@ -75,9 +84,9 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def style_transfer(content_image, style_image, alpha):
-    load_models_lazy() # Ensure models are loaded
+    load_models_lazy() # Your optimized loader runs first!
 
-    # Downsizing to 128px drastically cuts the math, stopping Render from timing out!
+    # Keep your 128px target size setup!
     TARGET_SIZE = 128 
 
     content_transform = transforms.Compose([
@@ -93,7 +102,6 @@ def style_transfer(content_image, style_image, alpha):
     content_image = content_transform(content_image).unsqueeze(0).to(device)
     style_image = style_transform(style_image).unsqueeze(0).to(device)
 
-    # torch.inference_mode() makes the CPU process the layers much faster
     with torch.inference_mode(): 
         content_feats = encoder(content_image, is_test=True)
         style_feats = encoder(style_image, is_test=True)
@@ -103,7 +111,6 @@ def style_transfer(content_image, style_image, alpha):
 
         stylized_image = decoder(stylized_feats)
         
-        # Instantly wipe variables from memory
         del content_feats, style_feats, stylized_feats
         gc.collect() 
 
