@@ -1,19 +1,17 @@
 import os
 import torch
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory
+import requests
+from flask import Flask, render_template, request, send_from_directory
 from flask_wtf import FlaskForm
 from flask_bootstrap import Bootstrap
 from werkzeug.utils import secure_filename
 from wtforms import FileField, SubmitField, FloatField, HiddenField
-from wtforms.validators import InputRequired
 from PIL import Image
 from torchvision import transforms
-import io
 
 # Import your existing AdaIN code
 from utils.models import VGGEncoder, Decoder
-from utils.utils import adaptive_instance_normalization, calc_mean_std
-
+from utils.utils import adaptive_instance_normalization
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'supersecretkey'
@@ -31,24 +29,59 @@ class UploadForm(FlaskForm):
     alpha = FloatField('Alpha', default=1.0)
     submit = SubmitField('Transfer Style')
 
-device = torch.device("cpu")
-torch.set_grad_enabled(False) 
+# Global model placeholders (Lazy Loading)
+encoder = None
+decoder = None
+device = torch.device("cpu") # Force strictly CPU to respect Render's Free tier limits
 
-encoder = VGGEncoder('vgg_normalized.pth').to(device)
-decoder = Decoder().to(device)
+# Google Drive Direct Download Helper
+def download_file_from_google_drive(file_id, destination):
+    if os.path.exists(destination):
+        return
+    print(f"Downloading {destination} from Google Drive...", flush=True)
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+    response = session.get(URL, params={'id': file_id}, stream=True)
+    
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk:
+                f.write(chunk)
+    print(f"Finished downloading {destination}.", flush=True)
 
-decoder.load_state_dict(torch.load('experiment/trial2/decoder_2.pth', map_location=device))
+def load_models_lazy():
+    global encoder, decoder
+    if encoder is not None and decoder is not None:
+        return # Models are already loaded in memory
 
-encoder.eval()
-decoder.eval()
+    print("Initializing models for the first time...", flush=True)
+    torch.set_grad_enabled(False)
+
+    # File paths on Render instance
+    encoder_path = 'vgg_normalized.pth'
+    decoder_path = 'decoder_2.pth'
+
+    # Download from your Google Drive links if they don't exist yet
+    download_file_from_google_drive('1CKxQm0W8GmB2NIg8whmgxrTgaCP5-sVP', encoder_path)
+    download_file_from_google_drive('1GAWG6_ytKp07wY8QMIac9_JK-7m_mkLU', decoder_path)
+
+    # Initialize and load model architectures
+    encoder = VGGEncoder(encoder_path).to(device)
+    decoder = Decoder().to(device)
+    decoder.load_state_dict(torch.load(decoder_path, map_location=device))
+
+    encoder.eval()
+    decoder.eval()
 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
+def style_transfer(content_image, style_image, alpha):
+    load_models_lazy() # Ensure models are downloaded and loaded right before execution
+
     content_transform = transforms.Compose([
-        transforms.Resize(256),
+        transforms.Resize(256), # Scaled down to prevent out-of-memory spikes during processing
         transforms.ToTensor()
     ])
 
@@ -56,6 +89,7 @@ def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
         transforms.Resize(256),
         transforms.ToTensor()
     ])
+    
     content_image = content_transform(content_image).unsqueeze(0).to(device)
     style_image = style_transform(style_image).unsqueeze(0).to(device)
 
@@ -68,19 +102,15 @@ def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
 
         stylized_image = decoder(stylized_feats)
         
+        # Free up variables immediately from RAM
         del content_feats, style_feats, stylized_feats
-        
+
     return stylized_image
 
-
 def save_image(image, path):
-    image = image.cpu().clone()
-    image = image.squeeze(0)
-    image = image.clamp(0, 1)
+    image = image.cpu().clone().squeeze(0).clamp(0, 1)
     image = transforms.ToPILImage()(image)
     image.save(path)
-
-
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -116,7 +146,7 @@ def index():
                 style_image = Image.open(style_path).convert('RGB')
 
                 alpha = float(form.alpha.data)
-                stylized_image = style_transfer(content_image, style_image, encoder, decoder, alpha, device)
+                stylized_image = style_transfer(content_image, style_image, alpha)
 
                 result_filename = 'stylized_' + content_filename
                 result_path = os.path.join(app.config['UPLOAD_FOLDER'], result_filename)
@@ -134,16 +164,13 @@ def index():
     return render_template('index.html', form=form, result_image=result_image, content_image=content_filename,
                            style_image=style_filename, error=error)
 
-
 @app.route('/uploads/<filename>')
 def send_image(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-
 @app.route('/examples/<path:filename>')
 def send_example(filename):
     return send_from_directory('examples', filename)
-
 
 if __name__ == '__main__':
     from werkzeug.serving import run_simple
