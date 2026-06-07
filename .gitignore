@@ -1,0 +1,15 @@
+# Ignore Python bytecode directories
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Ignore the local Python virtual environment
+venv/
+
+# Ignore local data folders
+content_data/
+style_data/
+
+# Optional: Ignore system files that Windows creates automatically
+Thumbs.db
+.DS_Store
