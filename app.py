@@ -56,21 +56,13 @@ def load_models_lazy():
     if encoder is not None and decoder is not None:
         return 
 
-    print("Initializing models cleanly...", flush=True)
+    print("Loading models from disk into RAM...", flush=True)
     gc.collect() 
 
     encoder_path = 'vgg_normalized.pth'
     decoder_path = 'decoder_2.pth'
 
-    
-    if not os.path.exists(encoder_path):
-        print("Downloading encoder model file...", flush=True)
-        urllib.request.urlretrieve('https://docs.google.com/uc?export=download&id=1CKxQm0W8GmB2NIg8whmgxrTgaCP5-sVP', encoder_path)
-        
-    if not os.path.exists(decoder_path):
-        print("Downloading decoder model file...", flush=True)
-        urllib.request.urlretrieve('https://docs.google.com/uc?export=download&id=1GAWG6_ytKp07wY8QMIac9_JK-7m_mkLU', decoder_path)
-
+    # Load straight from disk (guaranteed to be there now)
     encoder = VGGEncoder(encoder_path).to(device)
     decoder = Decoder().to(device)
     decoder.load_state_dict(torch.load(decoder_path, map_location=device))
@@ -84,9 +76,8 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def style_transfer(content_image, style_image, alpha):
-    load_models_lazy() # Your optimized loader runs first!
+    load_models_lazy() 
 
-    # Keep your 128px target size setup!
     TARGET_SIZE = 128 
 
     content_transform = transforms.Compose([
@@ -182,5 +173,18 @@ def send_example(filename):
     return send_from_directory('examples', filename)
 
 if __name__ == '__main__':
+    encoder_path = 'vgg_normalized.pth'
+    decoder_path = 'decoder_2.pth'
+
+    print("Pre-checking model files before startup...", flush=True)
+    if not os.path.exists(encoder_path):
+        print("Downloading encoder safely on startup...", flush=True)
+        urllib.request.urlretrieve('https://docs.google.com/uc?export=download&id=1CKxQm0W8GmB2NIg8whmgxrTgaCP5-sVP', encoder_path)
+        
+    if not os.path.exists(decoder_path):
+        print("Downloading decoder safely on startup...", flush=True)
+        urllib.request.urlretrieve('https://docs.google.com/uc?export=download&id=1GAWG6_ytKp07wY8QMIac9_JK-7m_mkLU', decoder_path)
+
+    print("Downloads complete! Booting Flask web server...", flush=True)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
